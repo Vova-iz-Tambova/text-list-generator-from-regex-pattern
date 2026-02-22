@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Генератор Текста по Регулярному Выражению</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Генератор Текста по Регулярному Выражению</h1>
+        
+        <div class="input-row">
+            <input type="text" id="pattern" placeholder="Введите паттерн">
+        </div>
+
+        <div class="progress-container">
+            <div class="progress-bar" id="progressBar"></div>
+        </div>
+
+        <div class="options-row">
+            <div class="checkbox-group">
+                <label class="checkbox-item">
+                    <input type="checkbox" id="exclude_uppercase">
+                    <span>Исключить заглавные</span>
+                </label>
+                <label class="checkbox-item">
+                    <input type="checkbox" id="exclude_latin">
+                    <span>Исключить латиницу</span>
+                </label>
+                <label class="checkbox-item">
+                    <input type="checkbox" id="exclude_digits">
+                    <span>Исключить цифры</span>
+                </label>
+                <label class="checkbox-item">
+                    <input type="checkbox" id="exclude_special">
+                    <span>Исключить спецсимволы</span>
+                </label>
+                <label class="checkbox-item">
+                    <input type="checkbox" id="disable_unicode">
+                    <span>Отключить Unicode</span>
+                </label>
+                <label class="checkbox-item">
+                    <input type="checkbox" id="generate_negative">
+                    <span>Генерировать негативные</span>
+                </label>
+            </div>
+            <button class="btn" id="submitBtn">Сгенерировать</button>
+        </div>
+
+        <div class="results-container">
+            <div class="result-box">
+                <div class="result-header">
+                    <span>✅ Принятые</span>
+                    <span id="acceptedCount">0</span>
+                </div>
+                <div id="result" class="result-content"></div>
+            </div>
+            <div class="result-box">
+                <div class="result-header">
+                    <span>❌ Отклонённые</span>
+                    <span id="rejectedCount">0</span>
+                </div>
+                <div id="resultRejected" class="result-content rejected"></div>
+            </div>
+        </div>
+
+        <div class="status" id="status"></div>
+    </div>
+
+    <script>
+        const patternInput = document.getElementById('pattern');
+        const submitBtn = document.getElementById('submitBtn');
+        const resultEl = document.getElementById('result');
+        const resultRejectedEl = document.getElementById('resultRejected');
+        const acceptedCountEl = document.getElementById('acceptedCount');
+        const rejectedCountEl = document.getElementById('rejectedCount');
+        const statusEl = document.getElementById('status');
+        const progressBar = document.getElementById('progressBar');
+        const checkboxes = [
+            'exclude_uppercase',
+            'exclude_latin',
+            'exclude_digits',
+            'exclude_special',
+            'disable_unicode',
+            'generate_negative'
+        ];
+
+        let eventSource = null;
+        let isGenerating = false;
+        let sessionId = null;
+        let wordCount = 0;
+        let rejectedCount = 0;
+
+        function loadSettings() {
+            checkboxes.forEach(id => {
+                const saved = localStorage.getItem(id);
+                if (saved !== null) {
+                    document.getElementById(id).checked = saved === 'true';
+                }
+            });
+            const savedPattern = localStorage.getItem('pattern');
+            if (savedPattern) {
+                patternInput.value = savedPattern;
+            }
+        }
+
+        function saveSettings() {
+            checkboxes.forEach(id => {
+                localStorage.setItem(id, document.getElementById(id).checked);
+            });
+            localStorage.setItem('pattern', patternInput.value);
+        }
+
+        checkboxes.forEach(id => {
+            document.getElementById(id).addEventListener('change', saveSettings);
+        });
+        patternInput.addEventListener('input', saveSettings);
+
+        loadSettings();
+
+        submitBtn.addEventListener('click', () => {
+            if (isGenerating) {
+                cancelGeneration();
+                return;
+            }
+
+            isGenerating = true;
+            submitBtn.textContent = '⏹ Остановить';
+            submitBtn.classList.add('cancel');
+            resultEl.textContent = '';
+            resultRejectedEl.textContent = '';
+            acceptedCountEl.textContent = '0';
+            rejectedCountEl.textContent = '0';
+            statusEl.className = 'status generating';
+            statusEl.textContent = 'Генерация...';
+            progressBar.style.width = '0%';
+            progressBar.classList.add('active');
+            wordCount = 0;
+            rejectedCount = 0;
+
+            sessionId = Date.now().toString();
+
+            const params = new URLSearchParams({
+                pattern: patternInput.value,
+                exclude_uppercase: document.getElementById('exclude_uppercase').checked,
+                exclude_latin: document.getElementById('exclude_latin').checked,
+                exclude_digits: document.getElementById('exclude_digits').checked,
+                exclude_special: document.getElementById('exclude_special').checked,
+                disable_unicode: document.getElementById('disable_unicode').checked,
+                generate_negative: document.getElementById('generate_negative').checked,
+                session_id: sessionId
+            });
+
+            try {
+                eventSource = new EventSource('/generate?' + params.toString());
+
+                eventSource.onmessage = (event) => {
+                    const data = JSON.parse(event.data);
+
+                    if (data.type === 'word') {
+                        wordCount++;
+                        acceptedCountEl.textContent = wordCount;
+                        if (wordCount === 1) {
+                            resultEl.textContent = data.word;
+                        } else {
+                            resultEl.textContent += ' ' + data.word;
+                        }
+                    } else if (data.type === 'rejected') {
+                        rejectedCount++;
+                        rejectedCountEl.textContent = rejectedCount;
+                        if (rejectedCount === 1) {
+                            resultRejectedEl.textContent = data.word;
+                        } else {
+                            resultRejectedEl.textContent += ' ' + data.word;
+                        }
+                    } else if (data.type === 'progress') {
+                        progressBar.style.width = data.progress + '%';
+                        statusEl.textContent = `Генерация... ${data.count || 0} принято, ${data.rejected_count || 0} отклонено из ${data.total || '?'}`;
+                    } else if (data.type === 'complete') {
+                        finishGeneration(true, `✓ Сгенерировано: ${data.count} принято, ${data.rejected_count} отклонено`);
+                    } else if (data.type === 'error') {
+                        finishGeneration(false, `✗ Ошибка: ${data.error}`);
+                    }
+                };
+
+                eventSource.onerror = () => {
+                    if (isGenerating) {
+                        finishGeneration(false, '✗ Ошибка соединения');
+                    }
+                };
+
+            } catch (error) {
+                finishGeneration(false, '✗ Ошибка: ' + error.message);
+            }
+        });
+
+        function cancelGeneration() {
+            if (sessionId) {
+                fetch('/cancel', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ session_id: sessionId })
+                });
+            }
+            if (eventSource) {
+                eventSource.close();
+                eventSource = null;
+            }
+            finishGeneration(false, '⏹ Отменено');
+        }
+
+        function finishGeneration(success, message) {
+            isGenerating = false;
+            submitBtn.textContent = 'Сгенерировать';
+            submitBtn.classList.remove('cancel');
+            progressBar.classList.remove('active');
+            statusEl.className = success ? 'status success' : 'status error';
+            statusEl.textContent = message;
+            
+            if (eventSource) {
+                eventSource.close();
+                eventSource = null;
+            }
+        }
+
+        patternInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') submitBtn.click();
+        });
+    </script>
+</body>
+</html>
