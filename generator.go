@@ -1,31 +1,9 @@
 package main
 
 import (
-	"net/http"
 	"unicode"
 )
 
-func passesFilters(s string, req GenerateRequest) bool {
-	for _, r := range s {
-		if req.ExcludeUppercase && unicode.IsUpper(r) {
-			return false
-		}
-		if req.ExcludeLatin && ((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z')) {
-			return false
-		}
-		if req.ExcludeDigits && unicode.IsDigit(r) {
-			return false
-		}
-		if req.ExcludeSpecial {
-			if !unicode.IsLetter(r) && !unicode.IsDigit(r) {
-				return false
-			}
-		}
-	}
-	return true
-}
-
-// Генерация комбинаций lookahead
 func generateLookaheadCombinations(alt LookaheadAlternative, callback func(string)) {
 	generateLookaheadRecursive(alt.Chars, 0, "", callback)
 }
@@ -74,51 +52,52 @@ func generateLookaheadRecursive(chars []rune, index int, current string, callbac
 	}
 }
 
-// ✅ ИСПРАВЛЕНО: Два этапа генерации (как в debug.go)
 func generateRecursiveStream(
 	nodes []PatternNode,
 	index int,
 	current string,
-	count *int,
-	generated *int,
-	rejected *int,
-	total int,
-	req GenerateRequest,
-	sessionID string,
-	cancelChan <-chan struct{},
-	w http.ResponseWriter,
-	flusher http.Flusher,
+	seenWords map[string]bool,
+	accepted, rejected *[]string,
 ) {
-	select {
-	case <-cancelChan:
-		return
-	default:
-	}
-
-	// ✅ ЭТАП 1: Если дошли до конца ИЛИ до lookahead — генерируем базовое слово
 	if index >= len(nodes) {
-		if current != "" {
-			*count++
+		if current != "" && !seenWords[current] {
+			seenWords[current] = true
 			
-			if !passesFilters(current, req) {
-				return
-			}
+			// ✅ Базовое слово → принято
+			*accepted = append(*accepted, current)
 			
-			*generated++
-			sendSSE(w, flusher, SSEMessage{Type: "word", Word: current})
-
-			if (*generated+*rejected)%100 == 0 {
-				progress := (*count * 100) / total
-				if progress > 100 {
-					progress = 100
+			// ✅ Генерируем отклонённые (с суффиксами lookahead)
+			for _, node := range nodes {
+				if node.IsLookahead && !node.IsLookbehind {
+					for _, alt := range node.LookaheadAlts {
+						generateLookaheadCombinations(alt, func(suffix string) {
+							if suffix == "" {
+								return
+							}
+							word := current + suffix
+							if !seenWords[word] {
+								seenWords[word] = true
+								*rejected = append(*rejected, word)
+							}
+						})
+					}
 				}
-				sendSSE(w, flusher, SSEMessage{
-					Type:          "progress",
-					Progress:      progress,
-					Count:         *generated,
-					RejectedCount: *rejected,
-					Total:         total,
-				})
+				
+				// ✅ Генерируем отклонённые (с префиксами lookbehind)
+				if node.IsLookahead && node.IsLookbehind {
+					for _, alt := range node.LookaheadAlts {
+						generateLookaheadCombinations(alt, func(prefix string) {
+							if prefix == "" {
+								return
+							}
+							word := prefix + current
+							if !seenWords[word] {
+								seenWords[word] = true
+								*rejected = append(*rejected, word)
+							}
+						})
+					}
+				}
 			}
 		}
 		return
@@ -126,69 +105,21 @@ func generateRecursiveStream(
 
 	node := nodes[index]
 
-	// ✅ ЭТАП 2: Если lookahead — генерируем отклонённые для ТЕКУЩЕГО слова
+	// Пропускаем lookahead/lookbehind при генерации базовых слов
 	if node.IsLookahead {
-		for _, alt := range node.LookaheadAlts {
-			generateLookaheadCombinations(alt, func(suffix string) {
-				if suffix != "" {
-					rejectedWord := current + suffix
-					*count++
-					
-					if passesFilters(rejectedWord, req) {
-						*rejected++
-						sendSSE(w, flusher, SSEMessage{Type: "rejected", Word: rejectedWord})
-					}
-
-					if (*generated+*rejected)%100 == 0 {
-						progress := (*count * 100) / total
-						if progress > 100 {
-							progress = 100
-						}
-						sendSSE(w, flusher, SSEMessage{
-							Type:          "progress",
-							Progress:      progress,
-							Count:         *generated,
-							RejectedCount: *rejected,
-							Total:         total,
-						})
-					}
-				}
-			})
-		}
-		// ✅ Продолжаем рекурсию для базовых слов (не возвращаем!)
-		generateRecursiveStream(nodes, index+1, current, count, generated, rejected, total, req, sessionID, cancelChan, w, flusher)
+		generateRecursiveStream(nodes, index+1, current, seenWords, accepted, rejected)
 		return
 	}
 
-	// ✅ ЭТАП 3: Обычные узлы — генерируем комбинации
 	if node.Quantified != nil {
-		for repeatCount := node.Quantified.Min; repeatCount <= node.Quantified.Max; repeatCount++ {
-			generateQuantifiedCombinations(
-				node.Quantified.Base.Chars,
-				repeatCount,
-				"",
-				func(repeated string) {
-					generateRecursiveStream(
-						nodes, index+1, current+repeated,
-						count, generated, rejected, total, req, sessionID,
-						cancelChan, w, flusher,
-					)
-				},
-			)
+		for n := node.Quantified.Min; n <= node.Quantified.Max; n++ {
+			generateQuantifiedCombinations(node.Quantified.Base.Chars, n, "", func(repeated string) {
+				generateRecursiveStream(nodes, index+1, current+repeated, seenWords, accepted, rejected)
+			})
 		}
 	} else if node.Position != nil {
 		for _, char := range node.Position.Chars {
-			select {
-			case <-cancelChan:
-				return
-			default:
-			}
-
-			if char == 0 {
-				generateRecursiveStream(nodes, index+1, current, count, generated, rejected, total, req, sessionID, cancelChan, w, flusher)
-			} else {
-				generateRecursiveStream(nodes, index+1, current+string(char), count, generated, rejected, total, req, sessionID, cancelChan, w, flusher)
-			}
+			generateRecursiveStream(nodes, index+1, current+string(char), seenWords, accepted, rejected)
 		}
 	}
 }
@@ -198,7 +129,6 @@ func generateQuantifiedCombinations(chars []rune, repeatCount int, current strin
 		callback(current)
 		return
 	}
-
 	for _, char := range chars {
 		generateQuantifiedCombinations(chars, repeatCount-1, current+string(char), callback)
 	}

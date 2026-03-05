@@ -7,14 +7,16 @@ import (
 	"unicode"
 )
 
+// decodeUnicodeEscapes преобразует \uXXXX в символы
 func decodeUnicodeEscapes(s string) string {
 	var result strings.Builder
 	i := 0
 	runes := []rune(s)
 
 	for i < len(runes) {
+		// Проверяем \uXXXX
 		if i+5 < len(runes) && runes[i] == '\\' && runes[i+1] == 'u' {
-			hex := string(runes[i+2 : i+6])
+			hex := strings.ToLower(string(runes[i+2 : i+6]))
 			code, err := strconv.ParseInt(hex, 16, 32)
 			if err == nil {
 				result.WriteRune(rune(code))
@@ -22,6 +24,7 @@ func decodeUnicodeEscapes(s string) string {
 				continue
 			}
 		}
+		
 		result.WriteRune(runes[i])
 		i++
 	}
@@ -29,10 +32,9 @@ func decodeUnicodeEscapes(s string) string {
 	return result.String()
 }
 
-// ✅ Извлекаем альтернативы из негативного lookahead
 func extractLookaheadAlternatives(runes []rune, start int) []LookaheadAlternative {
 	var alternatives []LookaheadAlternative
-	i := start + 3 // Пропускаем (?!
+	i := start + 3
 
 	currentAlt := []rune{}
 	depth := 0
@@ -45,7 +47,6 @@ func extractLookaheadAlternatives(runes []rune, start int) []LookaheadAlternativ
 			depth--
 			currentAlt = append(currentAlt, runes[i])
 		} else if runes[i] == '|' && depth == 0 {
-			// Конец текущей альтернативы
 			if len(currentAlt) > 0 {
 				alternatives = append(alternatives, LookaheadAlternative{Chars: currentAlt})
 			}
@@ -56,7 +57,6 @@ func extractLookaheadAlternatives(runes []rune, start int) []LookaheadAlternativ
 		i++
 	}
 
-	// Добавляем последнюю альтернативу
 	if len(currentAlt) > 0 {
 		alternatives = append(alternatives, LookaheadAlternative{Chars: currentAlt})
 	}
@@ -64,10 +64,9 @@ func extractLookaheadAlternatives(runes []rune, start int) []LookaheadAlternativ
 	return alternatives
 }
 
-func parsePattern(pattern string, disableUnicode bool, generateNegative bool) ([]PatternNode, error) {
-	if !disableUnicode {
-		pattern = decodeUnicodeEscapes(pattern)
-	}
+func parsePattern(pattern string) ([]PatternNode, error) {
+	// Декодируем Unicode
+	pattern = decodeUnicodeEscapes(pattern)
 
 	var nodes []PatternNode
 	runes := []rune(pattern)
@@ -76,20 +75,37 @@ func parsePattern(pattern string, disableUnicode bool, generateNegative bool) ([
 	for i < len(runes) {
 		char := runes[i]
 
-		// Негативный lookahead (?!...)
-		if char == '(' && i+2 < len(runes) && runes[i+1] == '?' && runes[i+2] == '!' {
-			if generateNegative {
-				alts := extractLookaheadAlternatives(runes, i)
-				if len(alts) > 0 {
-					nodes = append(nodes, PatternNode{
-						LookaheadAlts: alts,
-						IsLookahead:   true,
-					})
-				}
+		// Негативный lookbehind (?<!...)
+		if char == '(' && i+3 < len(runes) && runes[i+1] == '?' && runes[i+2] == '<' && runes[i+3] == '!' {
+			alts := extractLookaheadAlternatives(runes, i)
+			if len(alts) > 0 {
+				nodes = append(nodes, PatternNode{
+					LookaheadAlts: alts,
+					IsLookahead:   true,
+					IsLookbehind:  true,
+				})
 			}
 			end := findGroupEnd(runes, i)
 			if end == -1 {
-				return nil, fmt.Errorf("незакрытая группа (")
+				return nil, fmt.Errorf("незакрытая группа")
+			}
+			i = end + 1
+			continue
+		}
+
+		// Негативный lookahead (?!...)
+		if char == '(' && i+2 < len(runes) && runes[i+1] == '?' && runes[i+2] == '!' {
+			alts := extractLookaheadAlternatives(runes, i)
+			if len(alts) > 0 {
+				nodes = append(nodes, PatternNode{
+					LookaheadAlts: alts,
+					IsLookahead:   true,
+					IsLookbehind:  false,
+				})
+			}
+			end := findGroupEnd(runes, i)
+			if end == -1 {
+				return nil, fmt.Errorf("незакрытая группа")
 			}
 			i = end + 1
 			continue
@@ -99,7 +115,7 @@ func parsePattern(pattern string, disableUnicode bool, generateNegative bool) ([
 		if char == '(' && i+2 < len(runes) && runes[i+1] == '?' && runes[i+2] == '=' {
 			end := findGroupEnd(runes, i)
 			if end == -1 {
-				return nil, fmt.Errorf("незакрытая группа (")
+				return nil, fmt.Errorf("незакрытая группа")
 			}
 			i = end + 1
 			continue
@@ -242,8 +258,8 @@ func parsePattern(pattern string, disableUnicode bool, generateNegative bool) ([
 			continue
 		}
 
-		// Обычный символ
-		if unicode.IsLetter(char) || unicode.IsDigit(char) || unicode.IsSymbol(char) {
+		// Обычный символ (включая пробел)
+		if unicode.IsLetter(char) || unicode.IsDigit(char) || unicode.IsSymbol(char) || char == ' ' {
 			basePos := Position{Chars: []rune{char}}
 			i++
 

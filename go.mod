@@ -1,3 +1,2 @@
-module text-list-generator-from-regex-pattern
-
+module pattern-generator
 go 1.21
