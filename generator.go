@@ -52,21 +52,53 @@ func generateLookaheadRecursive(chars []rune, index int, current string, callbac
 	}
 }
 
+// Функция проверки фильтров
+func passesFilters(s string, excludeUppercase, excludeLatin, excludeDigits, excludeSpecial bool) bool {
+	for _, r := range s {
+		// Исключаем заглавные
+		if excludeUppercase && unicode.IsUpper(r) {
+			return false
+		}
+		
+		// Исключаем латиницу (только кириллица)
+		if excludeLatin && unicode.IsLetter(r) && !unicode.Is(unicode.Cyrillic, r) {
+			return false
+		}
+		
+		// Исключаем цифры
+		if excludeDigits && unicode.IsDigit(r) {
+			return false
+		}
+		
+		// Исключаем спецсимволы (не буквы, не цифры, не пробелы)
+		if excludeSpecial {
+			if !unicode.IsLetter(r) && !unicode.IsDigit(r) && !unicode.IsSpace(r) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 func generateRecursiveStream(
 	nodes []PatternNode,
 	index int,
 	current string,
 	seenWords map[string]bool,
 	accepted, rejected *[]string,
+	excludeUppercase, excludeLatin, excludeDigits, excludeSpecial bool,
 ) {
 	if index >= len(nodes) {
 		if current != "" && !seenWords[current] {
-			seenWords[current] = true
+			// Применяем фильтры к базовому слову
+			if !passesFilters(current, excludeUppercase, excludeLatin, excludeDigits, excludeSpecial) {
+				return
+			}
 			
-			// ✅ Базовое слово → принято
+			seenWords[current] = true
 			*accepted = append(*accepted, current)
 			
-			// ✅ Генерируем отклонённые (с суффиксами lookahead)
+			// Генерируем rejected И применяем к ним фильтры
 			for _, node := range nodes {
 				if node.IsLookahead && !node.IsLookbehind {
 					for _, alt := range node.LookaheadAlts {
@@ -76,14 +108,16 @@ func generateRecursiveStream(
 							}
 							word := current + suffix
 							if !seenWords[word] {
-								seenWords[word] = true
-								*rejected = append(*rejected, word)
+								// Применяем фильтры к rejected слову
+								if passesFilters(word, excludeUppercase, excludeLatin, excludeDigits, excludeSpecial) {
+									seenWords[word] = true
+									*rejected = append(*rejected, word)
+								}
 							}
 						})
 					}
 				}
 				
-				// ✅ Генерируем отклонённые (с префиксами lookbehind)
 				if node.IsLookahead && node.IsLookbehind {
 					for _, alt := range node.LookaheadAlts {
 						generateLookaheadCombinations(alt, func(prefix string) {
@@ -92,8 +126,11 @@ func generateRecursiveStream(
 							}
 							word := prefix + current
 							if !seenWords[word] {
-								seenWords[word] = true
-								*rejected = append(*rejected, word)
+								// Применяем фильтры к rejected слову
+								if passesFilters(word, excludeUppercase, excludeLatin, excludeDigits, excludeSpecial) {
+									seenWords[word] = true
+									*rejected = append(*rejected, word)
+								}
 							}
 						})
 					}
@@ -105,21 +142,20 @@ func generateRecursiveStream(
 
 	node := nodes[index]
 
-	// Пропускаем lookahead/lookbehind при генерации базовых слов
 	if node.IsLookahead {
-		generateRecursiveStream(nodes, index+1, current, seenWords, accepted, rejected)
+		generateRecursiveStream(nodes, index+1, current, seenWords, accepted, rejected, excludeUppercase, excludeLatin, excludeDigits, excludeSpecial)
 		return
 	}
 
 	if node.Quantified != nil {
 		for n := node.Quantified.Min; n <= node.Quantified.Max; n++ {
 			generateQuantifiedCombinations(node.Quantified.Base.Chars, n, "", func(repeated string) {
-				generateRecursiveStream(nodes, index+1, current+repeated, seenWords, accepted, rejected)
+				generateRecursiveStream(nodes, index+1, current+repeated, seenWords, accepted, rejected, excludeUppercase, excludeLatin, excludeDigits, excludeSpecial)
 			})
 		}
 	} else if node.Position != nil {
 		for _, char := range node.Position.Chars {
-			generateRecursiveStream(nodes, index+1, current+string(char), seenWords, accepted, rejected)
+			generateRecursiveStream(nodes, index+1, current+string(char), seenWords, accepted, rejected, excludeUppercase, excludeLatin, excludeDigits, excludeSpecial)
 		}
 	}
 }

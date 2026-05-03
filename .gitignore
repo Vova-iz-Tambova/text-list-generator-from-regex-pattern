@@ -1,0 +1,9 @@
+screenshot*
+plans
+server.exe
+server.log
+*.exe
+*.exe~
+*.test
+*.out
+go.work

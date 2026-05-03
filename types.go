@@ -9,6 +9,22 @@ type GenerateResponse struct {
 	Rejected []string `json:"rejected"`
 }
 
+// Для поддержки множественных паттернов
+type GenerateMultiRequest struct {
+	Patterns []string `json:"patterns"`
+}
+
+type PatternResult struct {
+	Pattern  string   `json:"pattern"`
+	Accepted []string `json:"accepted"`
+	Rejected []string `json:"rejected"`
+	Error    string   `json:"error,omitempty"`
+}
+
+type GenerateMultiResponse struct {
+	Results []PatternResult `json:"results"`
+}
+
 type Position struct {
 	Chars []rune
 }
@@ -24,9 +40,9 @@ type LookaheadAlternative struct {
 }
 
 type PatternNode struct {
-	Position        *Position
-	Quantified      *QuantifiedPosition
-	LookaheadAlts   []LookaheadAlternative
-	IsLookahead     bool
-	IsLookbehind    bool
+	Position      *Position
+	Quantified    *QuantifiedPosition
+	LookaheadAlts []LookaheadAlternative
+	IsLookahead   bool
+	IsLookbehind  bool
 }

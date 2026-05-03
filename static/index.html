@@ -4,16 +4,46 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Генератор Текста по Регулярному Выражению</title>
-  <link rel="stylesheet" href="/static/style.css">
+  <link rel="icon" href="/static/favicon.ico">
+  <link rel="stylesheet" href="/static/style.css?v=31">
 </head>
 <body>
   <div class="container">
-    <h1>Генератор Текста по Регулярному Выражению</h1>
+    <div class="header-row">
+      <h1>Генератор Текста по Регулярному Выражению</h1>
+      <div class="header-buttons">
+        <button id="loadBtn" class="btn uniform icon" title="Загрузить из файла">📂</button>
+        <button id="pasteBtn" class="btn uniform icon" title="Вставить из буфера">📋</button>
+        <button id="copyBtn" class="btn uniform icon" title="Копировать в буфер">📄</button>
+        <button id="clearBtn" class="btn uniform icon" title="Очистить поле">✕</button>
+      </div>
+    </div>
     
-    <div class="input-row">
-      <input type="text" id="pattern" placeholder="Введите regex паттерн...">
-      <button id="clearBtn" class="btn clear" title="Очистить">✕</button>
-      <button id="generateBtn" class="btn">Сгенерировать</button>
+    <div class="pattern-text-container">
+      <textarea id="patternsText" rows="10"></textarea>
+      <input type="file" id="fileInput" accept=".js,.txt">
+    </div>
+    
+    <div class="options-row">
+      <label class="checkbox-item">
+        <input type="checkbox" id="exclude_uppercase" checked>
+        Исключить заглавные
+      </label>
+      <label class="checkbox-item">
+        <input type="checkbox" id="exclude_latin" checked>
+        Только Кириллица
+      </label>
+      <label class="checkbox-item">
+        <input type="checkbox" id="exclude_digits" checked>
+        Исключить цифры
+      </label>
+      <label class="checkbox-item">
+        <input type="checkbox" id="exclude_special" checked>
+        Исключить спецсимволы
+      </label>
+      <div class="generate-wrapper">
+        <button id="generateBtn" class="btn uniform">Сгенерировать</button>
+      </div>
     </div>
     
     <div class="results-container">
@@ -29,6 +59,6 @@
     </div>
   </div>
   
-  <script src="/static/app.js"></script>
+  <script src="/static/app.js?v=49"></script>
 </body>
 </html>
