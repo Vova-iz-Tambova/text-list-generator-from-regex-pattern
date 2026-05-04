@@ -157,6 +157,34 @@ body {
   border-bottom: 1px solid #ccc;
   font-size: 12px;
   font-weight: 500;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.header-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.btn-icon {
+  background: none;
+  border: none;
+  outline: none;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 4px;
+}
+
+.btn-icon:hover {
+  background: #e0e0e0;
+}
+
+.count {
+  font-size: 11px;
+  min-width: 16px;
+  text-align: center;
 }
 
 .result-content {

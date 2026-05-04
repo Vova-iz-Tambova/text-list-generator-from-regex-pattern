@@ -1,12 +1,14 @@
 <!DOCTYPE html>
 <html lang="ru">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Генератор Текста по Регулярному Выражению</title>
   <link rel="icon" href="/static/favicon.ico">
-  <link rel="stylesheet" href="/static/style.css?v=31">
+  <link rel="stylesheet" href="/static/style.css?v=32">
 </head>
+
 <body>
   <div class="container">
     <div class="header-row">
@@ -18,12 +20,12 @@
         <button id="clearBtn" class="btn uniform icon" title="Очистить поле">✕</button>
       </div>
     </div>
-    
+
     <div class="pattern-text-container">
       <textarea id="patternsText" rows="10"></textarea>
       <input type="file" id="fileInput" accept=".js,.txt">
     </div>
-    
+
     <div class="options-row">
       <label class="checkbox-item">
         <input type="checkbox" id="exclude_uppercase" checked>
@@ -41,24 +43,45 @@
         <input type="checkbox" id="exclude_special" checked>
         Исключить спецсимволы
       </label>
+      <label class="checkbox-item">
+        <input type="checkbox" id="only_accepted" checked>
+        Только принятые
+      </label>
       <div class="generate-wrapper">
         <button id="generateBtn" class="btn uniform">Сгенерировать</button>
       </div>
     </div>
-    
+
     <div class="results-container">
       <div class="result-box">
-        <div class="result-header">✅ Принятые</div>
+        <div class="result-header">
+          <div>
+            ✅ Принятые <span id="accepted-count" class="count"></span>
+          </div>
+          <div class="header-actions">
+            <button class="btn-icon" onclick="copyResult('accepted')" title="Копировать принятые">📋</button>
+            <button class="btn-icon" onclick="saveResult('accepted')" title="Сохранить принятые">💾</button>
+          </div>
+        </div>
         <div id="accepted" class="result-content"></div>
       </div>
-      
+
       <div class="result-box">
-        <div class="result-header">❌ Отклонённые</div>
+        <div class="result-header">
+          <div>
+            ❌ Отклонённые <span id="rejected-count" class="count"></span>
+          </div>
+          <div class="header-actions">
+            <button class="btn-icon" onclick="copyResult('rejected')" title="Копировать отклонённые">📋</button>
+            <button class="btn-icon" onclick="saveResult('rejected')" title="Сохранить отклонённые">💾</button>
+          </div>
+        </div>
         <div id="rejected" class="result-content"></div>
       </div>
     </div>
   </div>
-  
-  <script src="/static/app.js?v=49"></script>
+
+  <script src="/static/app.js?v=67"></script>
 </body>
+
 </html>
